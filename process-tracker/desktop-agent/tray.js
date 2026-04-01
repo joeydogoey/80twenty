@@ -123,7 +123,8 @@ function openDashboard() {
   try {
     const { openDashboardWindow } = require('./main');
     openDashboardWindow();
-  } catch (_) {
+  } catch (err) {
+    console.error('[tray] Failed to open dashboard:', err.message);
     // Fallback: open external URL if configured
     const settings = loadSettings();
     const url = settings.dashboardUrl;

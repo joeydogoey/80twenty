@@ -229,6 +229,7 @@ function openDashboardWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Process Tracker — Dashboard',
+    show: false, // wait for ready-to-show before displaying
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -238,6 +239,14 @@ function openDashboardWindow() {
 
   dashboardWindow.loadFile(path.join(__dirname, 'ui', 'dashboard.html'));
   dashboardWindow.setMenu(null);
+
+  // Show only when fully loaded so the window doesn't flash blank.
+  // On macOS (menu-bar-only app) we must explicitly bring the window forward.
+  dashboardWindow.once('ready-to-show', () => {
+    dashboardWindow.show();
+    dashboardWindow.focus();
+    if (process.platform === 'darwin') app.focus({ steal: true });
+  });
 
   dashboardWindow.on('closed', () => { dashboardWindow = null; });
 }
