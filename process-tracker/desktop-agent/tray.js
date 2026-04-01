@@ -107,10 +107,15 @@ function togglePause() {
 }
 
 function openDashboard() {
-  const settings = loadSettings();
-  const url = settings.dashboardUrl || `${settings.apiBase}/dashboard`;
-  if (url && url.startsWith('http')) {
-    shell.openExternal(url);
+  // Open the local Electron dashboard window
+  try {
+    const { openDashboardWindow } = require('./main');
+    openDashboardWindow();
+  } catch (_) {
+    // Fallback: open external URL if configured
+    const settings = loadSettings();
+    const url = settings.dashboardUrl;
+    if (url && url.startsWith('http')) shell.openExternal(url);
   }
 }
 

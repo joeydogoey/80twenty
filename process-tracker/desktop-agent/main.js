@@ -1,7 +1,8 @@
 'use strict';
 
-const { app, ipcMain, shell, Notification } = require('electron');
+const { app, ipcMain, shell, Notification, BrowserWindow } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // ── Single instance lock ──────────────────────────────────────────────────────
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -12,7 +13,11 @@ if (!gotSingleInstanceLock) {
 }
 
 // ── Module imports (after lock check) ────────────────────────────────────────
-const { initDatabase, getStats } = require('./storage/database');
+const {
+  initDatabase, getStats,
+  getDashboardScreenshots, getDashboardEvents,
+  getDistinctApps, getAvailableDates,
+} = require('./storage/database');
 const { initSettings, loadSettings, saveSettings } = require('./settings');
 const { initActivityLog, logSystem, getLogPath } = require('./privacy/activity-log');
 const { setUserBlocklist } = require('./privacy/filter');
@@ -156,6 +161,71 @@ ipcMain.handle('open-activity-log', () => {
   const logPath = getLogPath();
   if (logPath) shell.openPath(logPath);
 });
+
+// ── Dashboard IPC ─────────────────────────────────────────────────────────────
+
+ipcMain.handle('dashboard-get-screenshots', (event, opts = {}) => {
+  try {
+    return getDashboardScreenshots(opts);
+  } catch (_) { return []; }
+});
+
+ipcMain.handle('dashboard-get-events', (event, opts = {}) => {
+  try {
+    return getDashboardEvents(opts);
+  } catch (_) { return []; }
+});
+
+ipcMain.handle('dashboard-get-screenshot-image', (event, screenshotId) => {
+  try {
+    const screenshots = getDashboardScreenshots({ limit: 1000 });
+    const screenshot = screenshots.find(s => s.id === screenshotId);
+    if (!screenshot || !screenshot.local_path) return null;
+    if (!fs.existsSync(screenshot.local_path)) return null;
+    const data = fs.readFileSync(screenshot.local_path);
+    return `data:image/jpeg;base64,${data.toString('base64')}`;
+  } catch (_) { return null; }
+});
+
+ipcMain.handle('dashboard-get-distinct-apps', () => {
+  try { return getDistinctApps(); } catch (_) { return []; }
+});
+
+ipcMain.handle('dashboard-get-available-dates', () => {
+  try { return getAvailableDates(); } catch (_) { return []; }
+});
+
+// ── Dashboard window ──────────────────────────────────────────────────────────
+
+let dashboardWindow = null;
+
+function openDashboardWindow() {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.focus();
+    return;
+  }
+
+  dashboardWindow = new BrowserWindow({
+    width: 1400,
+    height: 860,
+    minWidth: 900,
+    minHeight: 600,
+    title: 'Process Tracker — Dashboard',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  dashboardWindow.loadFile(path.join(__dirname, 'ui', 'dashboard.html'));
+  dashboardWindow.setMenu(null);
+
+  dashboardWindow.on('closed', () => { dashboardWindow = null; });
+}
+
+// Expose so tray.js can call it
+module.exports = { openDashboardWindow };
 
 // ── Pause/resume ──────────────────────────────────────────────────────────────
 

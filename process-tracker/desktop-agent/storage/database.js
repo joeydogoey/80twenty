@@ -164,6 +164,85 @@ function getStats() {
   };
 }
 
+// ── Dashboard queries ─────────────────────────────────────────────────────────
+
+function getDashboardScreenshots({ limit = 50, offset = 0, date = null } = {}) {
+  let where = '';
+  const params = [];
+  if (date) {
+    where = `WHERE timestamp >= ? AND timestamp < ?`;
+    params.push(`${date}T00:00:00.000Z`, `${date}T23:59:59.999Z`);
+  }
+  params.push(limit, offset);
+  return getDb().prepare(`
+    SELECT id, timestamp, trigger_type, app_name, window_title,
+           click_x, click_y, local_path, remote_url, uploaded, file_size_bytes
+    FROM screenshots
+    ${where}
+    ORDER BY timestamp DESC
+    LIMIT ? OFFSET ?
+  `).all(...params);
+}
+
+function getDashboardEvents({ limit = 200, offset = 0, date = null, appName = null, eventType = null } = {}) {
+  const conditions = [];
+  const params = [];
+
+  if (date) {
+    conditions.push(`timestamp >= ? AND timestamp < ?`);
+    params.push(`${date}T00:00:00.000Z`, `${date}T23:59:59.999Z`);
+  }
+  if (appName) {
+    conditions.push(`json_extract(payload, '$.app_name') = ?`);
+    params.push(appName);
+  }
+  if (eventType) {
+    conditions.push(`event_type = ?`);
+    params.push(eventType);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit, offset);
+
+  return getDb().prepare(`
+    SELECT id, event_id, event_type, timestamp, source, payload, screenshot_id
+    FROM events
+    ${where}
+    ORDER BY timestamp DESC
+    LIMIT ? OFFSET ?
+  `).all(...params);
+}
+
+function getEventsAroundTime(timestamp, windowMs = 10000) {
+  const ts = new Date(timestamp).getTime();
+  const from = new Date(ts - windowMs).toISOString();
+  const to   = new Date(ts + windowMs).toISOString();
+  return getDb().prepare(`
+    SELECT id, event_type, timestamp, source, payload, screenshot_id
+    FROM events
+    WHERE timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp ASC
+  `).all(from, to);
+}
+
+function getDistinctApps() {
+  return getDb().prepare(`
+    SELECT DISTINCT json_extract(payload, '$.app_name') as app_name
+    FROM events
+    WHERE json_extract(payload, '$.app_name') IS NOT NULL
+    ORDER BY app_name ASC
+  `).all().map(r => r.app_name).filter(Boolean);
+}
+
+function getAvailableDates() {
+  return getDb().prepare(`
+    SELECT DISTINCT substr(timestamp, 1, 10) as date
+    FROM events
+    ORDER BY date DESC
+    LIMIT 30
+  `).all().map(r => r.date);
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -179,4 +258,9 @@ module.exports = {
   getScreenshotForCleanup,
   clearScreenshotLocalPath,
   getStats,
+  getDashboardScreenshots,
+  getDashboardEvents,
+  getEventsAroundTime,
+  getDistinctApps,
+  getAvailableDates,
 };
