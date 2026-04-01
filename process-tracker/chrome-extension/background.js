@@ -25,6 +25,59 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+// ── Web app name resolver ─────────────────────────────────────────────────────
+
+const WEB_APP_MAP = {
+  'mail.google.com':      'Gmail',
+  'calendar.google.com':  'Google Calendar',
+  'docs.google.com':      'Google Docs',
+  'sheets.google.com':    'Google Sheets',
+  'slides.google.com':    'Google Slides',
+  'drive.google.com':     'Google Drive',
+  'meet.google.com':      'Google Meet',
+  'chat.google.com':      'Google Chat',
+  'notion.so':            'Notion',
+  'app.slack.com':        'Slack',
+  'github.com':           'GitHub',
+  'linear.app':           'Linear',
+  'figma.com':            'Figma',
+  'airtable.com':         'Airtable',
+  'trello.com':           'Trello',
+  'asana.com':            'Asana',
+  'app.asana.com':        'Asana',
+  'monday.com':           'Monday',
+  'app.monday.com':       'Monday',
+  'jira.atlassian.net':   'Jira',
+  'confluence.atlassian.net': 'Confluence',
+  'miro.com':             'Miro',
+  'zoom.us':              'Zoom',
+  'teams.microsoft.com':  'Microsoft Teams',
+  'outlook.office.com':   'Outlook',
+  'outlook.live.com':     'Outlook',
+  'app.hubspot.com':      'HubSpot',
+  'salesforce.com':       'Salesforce',
+  'app.intercom.com':     'Intercom',
+  'loom.com':             'Loom',
+  'app.loom.com':         'Loom',
+  'www.youtube.com':      'YouTube',
+  'youtube.com':          'YouTube',
+};
+
+function resolveWebApp(url) {
+  if (!url) return '';
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    // Check exact match first, then check if hostname ends with a known domain
+    if (WEB_APP_MAP[hostname]) return WEB_APP_MAP[hostname];
+    for (const [key, name] of Object.entries(WEB_APP_MAP)) {
+      if (hostname.endsWith(key)) return name;
+    }
+    return hostname;
+  } catch (_) {
+    return '';
+  }
+}
+
 // ── Tab tracking ─────────────────────────────────────────────────────────────
 
 let previousTab = null;
@@ -43,8 +96,10 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
       source: 'chrome_extension',
       from_url: previousTab.url || '',
       from_title: previousTab.title || '',
+      from_web_app: resolveWebApp(previousTab.url),
       to_url: newTab.url || '',
       to_title: newTab.title || '',
+      web_app_name: resolveWebApp(newTab.url),
     });
   }
 
@@ -94,6 +149,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     title: tab.title || '',
     domain,
     path,
+    web_app_name: resolveWebApp(url),
   });
 });
 

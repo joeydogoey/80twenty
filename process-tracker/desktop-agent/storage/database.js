@@ -243,6 +243,77 @@ function getAvailableDates() {
   `).all().map(r => r.date);
 }
 
+// ── Summary queries ───────────────────────────────────────────────────────────
+
+/**
+ * Aggregate active time per app for a given date.
+ * Returns [{app_name, web_app_name, active_seconds, total_seconds, switch_count}]
+ * sorted by active_seconds descending.
+ */
+function getAppTimeSummary(date) {
+  const rows = getDb().prepare(`
+    SELECT
+      json_extract(payload, '$.app_name')          AS app_name,
+      json_extract(payload, '$.web_app_name')       AS web_app_name,
+      SUM(CAST(COALESCE(json_extract(payload, '$.active_duration_seconds'), 0) AS INTEGER))   AS active_seconds,
+      SUM(CAST(COALESCE(json_extract(payload, '$.duration_on_previous_seconds'), 0) AS INTEGER)) AS total_seconds,
+      COUNT(*) AS switch_count
+    FROM events
+    WHERE event_type = 'window_change'
+      AND timestamp >= ?
+      AND timestamp < ?
+    GROUP BY app_name
+    ORDER BY active_seconds DESC
+  `).all(`${date}T00:00:00.000Z`, `${date}T23:59:59.999Z`);
+  return rows.filter(r => r.app_name);
+}
+
+/**
+ * Group window_change events for a date into workflow sequences.
+ * A gap of >= 5 minutes between consecutive events starts a new workflow.
+ * Returns [{startTime, endTime, totalActiveSeconds, apps: [{name, webAppName, activeSeconds}]}]
+ */
+function getWorkflowSequences(date) {
+  const GAP_MS = 5 * 60 * 1000; // 5-minute gap = new workflow
+
+  const rows = getDb().prepare(`
+    SELECT
+      timestamp,
+      json_extract(payload, '$.app_name')          AS app_name,
+      json_extract(payload, '$.web_app_name')       AS web_app_name,
+      CAST(COALESCE(json_extract(payload, '$.active_duration_seconds'), 0) AS INTEGER) AS active_seconds
+    FROM events
+    WHERE event_type = 'window_change'
+      AND timestamp >= ?
+      AND timestamp < ?
+    ORDER BY timestamp ASC
+  `).all(`${date}T00:00:00.000Z`, `${date}T23:59:59.999Z`);
+
+  if (rows.length === 0) return [];
+
+  const sequences = [];
+  let current = null;
+
+  for (const row of rows) {
+    if (!row.app_name) continue;
+    const ts = new Date(row.timestamp).getTime();
+
+    if (!current || ts - current.lastTs >= GAP_MS) {
+      if (current) sequences.push(current);
+      current = { startTime: row.timestamp, endTime: row.timestamp, lastTs: ts, totalActiveSeconds: 0, apps: [] };
+    }
+
+    current.endTime = row.timestamp;
+    current.lastTs = ts;
+    current.totalActiveSeconds += row.active_seconds;
+    current.apps.push({ name: row.app_name, webAppName: row.web_app_name || '', activeSeconds: row.active_seconds });
+  }
+  if (current) sequences.push(current);
+
+  // Remove lastTs from output
+  return sequences.map(({ lastTs: _, ...s }) => s);
+}
+
 module.exports = {
   initDatabase,
   getDb,
@@ -263,4 +334,6 @@ module.exports = {
   getEventsAroundTime,
   getDistinctApps,
   getAvailableDates,
+  getAppTimeSummary,
+  getWorkflowSequences,
 };

@@ -14,7 +14,10 @@ const filterType = document.getElementById('filter-type');
 // Default to today
 filterDate.value = new Date().toISOString().slice(0, 10);
 
-filterDate.addEventListener('change', loadAll);
+filterDate.addEventListener('change', () => {
+  if (activeTab === 'summary') loadSummary();
+  else loadAll();
+});
 filterApp.addEventListener('change', loadEvents);
 filterType.addEventListener('change', loadEvents);
 
@@ -27,8 +30,12 @@ async function init() {
 
   // Refresh every 30 seconds
   setInterval(async () => {
-    await loadAll();
     await loadStats();
+    if (activeTab === 'summary') {
+      await loadSummary();
+    } else {
+      await loadAll();
+    }
   }, 30000);
 
   // Update session timer every second
@@ -371,6 +378,144 @@ function safeJson(str) {
 
 function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+
+let activeTab = 'timeline';
+
+function switchTab(name) {
+  activeTab = name;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().includes(name === 'timeline' ? 'timeline' : 'summary')));
+  document.getElementById('tab-timeline').classList.toggle('active', name === 'timeline');
+  document.getElementById('tab-summary').classList.toggle('active', name === 'summary');
+  if (name === 'summary') loadSummary();
+}
+
+// ── Summary tab ───────────────────────────────────────────────────────────────
+
+async function loadSummary() {
+  const date = filterDate.value || new Date().toISOString().slice(0, 10);
+  const panel = document.getElementById('summary-panel');
+  panel.innerHTML = '<div class="spinner" style="margin:60px auto"></div>';
+
+  try {
+    const [appSummary, workflows, switchEvents] = await Promise.all([
+      window.tracker.getAppTimeSummary(date),
+      window.tracker.getWorkflowSequences(date),
+      window.tracker.getEvents({ date, eventType: 'window_change', limit: 500 }),
+    ]);
+    renderSummary(panel, appSummary, workflows, switchEvents);
+  } catch (err) {
+    panel.innerHTML = `<div class="no-summary">Failed to load summary: ${escHtml(String(err))}</div>`;
+  }
+}
+
+function renderSummary(panel, appSummary, workflows, switchEvents) {
+  const totalActive = appSummary.reduce((s, r) => s + (r.active_seconds || 0), 0);
+
+  let html = '';
+
+  // ── Time per app ──────────────────────────────────────────────────────────
+  html += `<div>
+    <div class="summary-section-title">Time per app — active only</div>`;
+
+  if (appSummary.length === 0) {
+    html += '<div class="no-summary" style="padding:20px 0">No data yet for this date.</div>';
+  } else {
+    html += '<div class="app-bar-list">';
+    for (const row of appSummary) {
+      const displayName = row.web_app_name || row.app_name || 'Unknown';
+      const pct = totalActive > 0 ? Math.round((row.active_seconds / totalActive) * 100) : 0;
+      const timeLabel = fmtDuration(row.active_seconds || 0);
+      html += `
+        <div class="app-bar-row" onclick="filterByApp(${JSON.stringify(displayName)})">
+          <div class="app-bar-name" title="${escHtml(displayName)}">${escHtml(displayName)}</div>
+          <div class="app-bar-track"><div class="app-bar-fill" style="width:${pct}%"></div></div>
+          <div class="app-bar-time">${timeLabel}</div>
+        </div>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ── Workflow sequences ────────────────────────────────────────────────────
+  html += `<div>
+    <div class="summary-section-title">Workflow sequences</div>`;
+
+  if (workflows.length === 0) {
+    html += '<div class="no-summary" style="padding:20px 0">No workflow data yet.</div>';
+  } else {
+    html += '<div class="workflow-cards">';
+    for (const wf of workflows) {
+      const startFmt = formatTime(wf.startTime);
+      const endFmt   = formatTime(wf.endTime);
+      const dur      = fmtDuration(wf.totalActiveSeconds || 0);
+      html += `<div class="workflow-card">
+        <div class="workflow-card-header">${startFmt} – ${endFmt}  ·  ${dur} active</div>
+        <div class="workflow-chain">`;
+      wf.apps.forEach((a, i) => {
+        const name = a.webAppName || a.name;
+        html += `<div class="workflow-app-chip">${escHtml(name)}<span class="chip-time">${fmtDuration(a.activeSeconds)}</span></div>`;
+        if (i < wf.apps.length - 1) html += `<span class="workflow-arrow">→</span>`;
+      });
+      html += `</div></div>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ── App switch feed ───────────────────────────────────────────────────────
+  html += `<div>
+    <div class="summary-section-title">App switch log</div>
+    <div class="switch-feed">`;
+
+  if (switchEvents.length === 0) {
+    html += '<div class="no-summary" style="padding:20px 0">No switches recorded yet.</div>';
+  } else {
+    for (const e of switchEvents) {
+      const p = safeJson(e.payload);
+      const to = p.web_app_name || p.app_name || '?';
+      const from = p.previous_app || '';
+      const active = fmtDuration(p.active_duration_seconds || 0);
+      const time = formatTime(e.timestamp);
+      html += `<div class="switch-row">
+        <div class="switch-time">${time}</div>
+        <div class="switch-transition">
+          ${from ? `<span class="switch-from">${escHtml(from)}</span><span class="switch-arrow">→</span>` : ''}
+          <strong>${escHtml(to)}</strong>
+          ${p.window_title ? `<span class="switch-from"> "${escHtml(p.window_title.slice(0,60))}"</span>` : ''}
+        </div>
+        <div class="switch-duration">${active}</div>
+      </div>`;
+    }
+  }
+  html += '</div></div>';
+
+  panel.innerHTML = html;
+}
+
+function filterByApp(appName) {
+  switchTab('timeline');
+  // find matching option in filterApp and select it
+  const sel = document.getElementById('filter-app');
+  for (const opt of sel.options) {
+    if (opt.value === appName || opt.text === appName) {
+      sel.value = opt.value;
+      break;
+    }
+  }
+  loadEvents();
+}
+
+function fmtDuration(seconds) {
+  if (!seconds) return '0s';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

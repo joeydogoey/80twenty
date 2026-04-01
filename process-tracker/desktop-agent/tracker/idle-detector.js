@@ -17,6 +17,13 @@ let checkInterval = null;
 let onIdleChangeCallback = null;
 let powerMonitor;
 
+// ── Idle accumulator (for active-time tracking) ───────────────────────────────
+// Tracks how much idle time has accumulated since the last window switch.
+// window-tracker calls resetIdleAccumulator() on each switch, then reads
+// getIdleAccumulatedMs() before resetting to subtract idle from total duration.
+let idleAccumulatedMs = 0;
+let idleAccStartedAt = null;
+
 /**
  * Start idle detection.
  * Must be called after the Electron app is ready (powerMonitor requires app ready).
@@ -52,6 +59,7 @@ function checkIdleState() {
     isIdle = true;
     // Backtrack to approximate when idle actually started
     idleStartTime = Date.now() - (idleSeconds * 1000);
+    idleAccStartedAt = idleStartTime;
 
     insertEvent({
       event_type: 'idle_start',
@@ -73,7 +81,12 @@ function checkIdleState() {
   } else if (isIdle && idleSeconds < IDLE_THRESHOLD_SECONDS) {
     // Transition: idle → active
     isIdle = false;
-    const idleDurationMs = Date.now() - idleStartTime;
+    const now2 = Date.now();
+    if (idleAccStartedAt) {
+      idleAccumulatedMs += now2 - idleAccStartedAt;
+      idleAccStartedAt = null;
+    }
+    const idleDurationMs = now2 - idleStartTime;
     const idleDurationSeconds = Math.round(idleDurationMs / 1000);
 
     insertEvent({
@@ -114,4 +127,19 @@ function isCurrentlyIdle() {
   return isIdle;
 }
 
-module.exports = { startIdleDetector, stopIdleDetector, isCurrentlyIdle };
+function getIdleAccumulatedMs() {
+  // If currently idle, include time since idle started (not yet flushed)
+  if (isIdle && idleAccStartedAt) {
+    return idleAccumulatedMs + (Date.now() - idleAccStartedAt);
+  }
+  return idleAccumulatedMs;
+}
+
+function resetIdleAccumulator() {
+  idleAccumulatedMs = 0;
+  // If we're currently idle, restart the accumulator from now
+  // (the window-tracker is noting a switch; ongoing idle will be charged to the new window)
+  idleAccStartedAt = isIdle ? Date.now() : null;
+}
+
+module.exports = { startIdleDetector, stopIdleDetector, isCurrentlyIdle, getIdleAccumulatedMs, resetIdleAccumulator };

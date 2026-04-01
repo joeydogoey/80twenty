@@ -27,4 +27,10 @@ contextBridge.exposeInMainWorld('tracker', {
 
   /** Get list of dates that have recorded events */
   getAvailableDates: () => ipcRenderer.invoke('dashboard-get-available-dates'),
+
+  /** Get active time per app for a given date (YYYY-MM-DD) */
+  getAppTimeSummary: (date) => ipcRenderer.invoke('dashboard-get-app-summary', date),
+
+  /** Get workflow sequences (grouped app chains) for a given date */
+  getWorkflowSequences: (date) => ipcRenderer.invoke('dashboard-get-workflow-sequences', date),
 });

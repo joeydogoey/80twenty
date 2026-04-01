@@ -17,6 +17,7 @@ const {
   initDatabase, getStats,
   getDashboardScreenshots, getDashboardEvents,
   getDistinctApps, getAvailableDates,
+  getAppTimeSummary, getWorkflowSequences,
 } = require('./storage/database');
 const { initAutoUpdater, checkForUpdates, installUpdate } = require('./updater');
 const { initSettings, loadSettings, saveSettings } = require('./settings');
@@ -202,6 +203,14 @@ ipcMain.handle('dashboard-get-distinct-apps', () => {
 
 ipcMain.handle('dashboard-get-available-dates', () => {
   try { return getAvailableDates(); } catch (_) { return []; }
+});
+
+ipcMain.handle('dashboard-get-app-summary', (_, date) => {
+  try { return getAppTimeSummary(date || new Date().toISOString().slice(0, 10)); } catch (_) { return []; }
+});
+
+ipcMain.handle('dashboard-get-workflow-sequences', (_, date) => {
+  try { return getWorkflowSequences(date || new Date().toISOString().slice(0, 10)); } catch (_) { return []; }
 });
 
 // ── Dashboard window ──────────────────────────────────────────────────────────

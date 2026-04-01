@@ -4,6 +4,7 @@ const { insertEvent } = require('../storage/database');
 const { isExtensionConnected } = require('../websocket/extension-bridge');
 const { isBrowser, shouldSkip } = require('../privacy/filter');
 const { logActivity } = require('../privacy/activity-log');
+const { getIdleAccumulatedMs, resetIdleAccumulator } = require('./idle-detector');
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -76,9 +77,17 @@ async function pollActiveWindow() {
   const nowIso = new Date().toISOString();
 
   let durationOnPreviousSeconds = 0;
+  let activeDurationSeconds = 0;
   if (currentApp && windowStartTime) {
-    durationOnPreviousSeconds = Math.round((now - windowStartTime) / 1000);
+    const totalMs = now - windowStartTime;
+    const idleMs = getIdleAccumulatedMs();
+    durationOnPreviousSeconds = Math.round(totalMs / 1000);
+    activeDurationSeconds = Math.round(Math.max(0, totalMs - idleMs) / 1000);
   }
+  resetIdleAccumulator();
+
+  const previousApp = currentApp;
+  const previousTitle = currentTitle;
 
   const event = {
     event_type: 'window_change',
@@ -92,11 +101,14 @@ async function pollActiveWindow() {
       window_title: title,
       bundle_id: win.owner?.bundleId || '',
       duration_on_previous_seconds: durationOnPreviousSeconds,
+      active_duration_seconds: activeDurationSeconds,
+      previous_app: previousApp || '',
+      previous_title: previousTitle || '',
     },
   };
 
   insertEvent(event);
-  logActivity(appName, title, 'window change');
+  logActivity(appName, title, { fromApp: previousApp, fromTitle: previousTitle, activeSeconds: activeDurationSeconds });
 
   if (onWindowChangeCallback) {
     onWindowChangeCallback({ appName, title, bundleId: win.owner?.bundleId });

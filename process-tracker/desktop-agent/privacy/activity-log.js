@@ -17,10 +17,18 @@ function initActivityLog(userDataPath) {
 
 /**
  * Append a human-readable entry to the activity log.
- * Format: [HH:MM:SS] AppName — "Window Title" (note)
+ *
+ * When called with a transition context object (from window-tracker on switch):
+ *   logActivity(toApp, toTitle, { fromApp, fromTitle, activeSeconds })
+ *   → [10:04:12] Google Chrome → Figma  "Tech Pack SC-4521"  (active 12m 30s)
+ *
+ * When called with a plain string note (screenshots, clicks, etc.):
+ *   logActivity(appName, windowTitle, 'screenshot taken')
+ *   → [10:04:12] Figma — "Tech Pack SC-4521"  (screenshot taken)
+ *
  * @param {string} appName
  * @param {string} windowTitle
- * @param {string} [note]  - e.g. "screenshot taken", "window change", "click"
+ * @param {string|{fromApp?:string, fromTitle?:string, activeSeconds?:number}} [note]
  */
 function logActivity(appName, windowTitle, note) {
   if (!logPath) return;
@@ -43,15 +51,32 @@ function logActivity(appName, windowTitle, note) {
       hour12: false,
     });
 
-    const notePart = note ? ` (${note})` : '';
-    const title = windowTitle ? ` — "${windowTitle}"` : '';
-    const line = `[${time}] ${appName}${title}${notePart}\n`;
+    let line;
+    if (note && typeof note === 'object') {
+      // Rich transition log: FromApp → ToApp "Title" (active Xm Ys)
+      const { fromApp, activeSeconds } = note;
+      const from = fromApp ? `${fromApp} → ` : '';
+      const titlePart = windowTitle ? `  "${windowTitle}"` : '';
+      const activePart = activeSeconds != null ? `  (active ${fmtDuration(activeSeconds)})` : '';
+      line = `[${time}] ${from}${appName}${titlePart}${activePart}\n`;
+    } else {
+      const notePart = note ? ` (${note})` : '';
+      const titlePart = windowTitle ? ` — "${windowTitle}"` : '';
+      line = `[${time}] ${appName}${titlePart}${notePart}\n`;
+    }
 
     fs.appendFileSync(logPath, line, 'utf8');
   } catch (err) {
     // Don't crash the app if logging fails
     console.warn('[activity-log] Failed to write:', err.message);
   }
+}
+
+function fmtDuration(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 /**
