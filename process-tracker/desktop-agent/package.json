@@ -1,0 +1,40 @@
+{
+  "name": "process-tracker-desktop",
+  "version": "1.0.0",
+  "description": "macOS Desktop Agent for Process Discovery Collector",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "active-win": "^7.1.0",
+    "better-sqlite3": "^9.2.0",
+    "electron": "^27.1.0",
+    "screenshot-desktop": "^1.12.8",
+    "sharp": "^0.33.0",
+    "uiohook-napi": "^1.5.5",
+    "uuid": "^9.0.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.6.4",
+    "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "appId": "com.processtracker.desktop",
+    "productName": "Process Tracker",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache"
+    ]
+  }
+}
