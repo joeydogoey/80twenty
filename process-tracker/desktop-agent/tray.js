@@ -18,6 +18,7 @@ let currentState = 'active';
 let isPaused = false;
 let onPauseChangeCallback = null;
 let settingsWindow = null;
+let pendingUpdateVersion = null;
 
 /**
  * Create the menu bar tray icon and menu.
@@ -60,6 +61,13 @@ function updateTrayMenu() {
       enabled: false,
     },
     { type: 'separator' },
+    ...(pendingUpdateVersion ? [
+      {
+        label: `🆕 Restart to install v${pendingUpdateVersion}`,
+        click: () => { const { installUpdate } = require('./updater'); installUpdate(); },
+      },
+      { type: 'separator' },
+    ] : []),
     {
       label: isPaused ? '▶  Resume Tracking' : '⏸  Pause Tracking',
       click: togglePause,
@@ -71,6 +79,10 @@ function updateTrayMenu() {
     {
       label: '📋 View Activity Log',
       click: openActivityLog,
+    },
+    {
+      label: '🔄 Check for Updates',
+      click: () => { const { checkForUpdates } = require('./updater'); checkForUpdates(); },
     },
     {
       label: '⚙  Settings',
@@ -167,4 +179,13 @@ function isPausedState() {
 // Refresh the menu every 60 seconds to update stats
 setInterval(updateTrayMenu, 60 * 1000);
 
-module.exports = { setupTray, setTrayState, updateTrayMenu, isPausedState };
+/**
+ * Called when an update has been downloaded and is ready to install.
+ * Adds a "Restart to install" item to the tray menu.
+ */
+function setUpdateReady(version) {
+  pendingUpdateVersion = version;
+  updateTrayMenu();
+}
+
+module.exports = { setupTray, setTrayState, updateTrayMenu, isPausedState, setUpdateReady };

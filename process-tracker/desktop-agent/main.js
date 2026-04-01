@@ -18,10 +18,11 @@ const {
   getDashboardScreenshots, getDashboardEvents,
   getDistinctApps, getAvailableDates,
 } = require('./storage/database');
+const { initAutoUpdater, checkForUpdates, installUpdate } = require('./updater');
 const { initSettings, loadSettings, saveSettings } = require('./settings');
 const { initActivityLog, logSystem, getLogPath } = require('./privacy/activity-log');
 const { setUserBlocklist } = require('./privacy/filter');
-const { setupTray, setTrayState, isPausedState } = require('./tray');
+const { setupTray, setTrayState, isPausedState, setUpdateReady } = require('./tray');
 const { startWebSocketServer } = require('./websocket/extension-bridge');
 const { startWindowTracker, stopWindowTracker, pauseTracking, resumeTracking } = require('./tracker/window-tracker');
 const { startClickDetector, stopClickDetector, pauseClickDetector, resumeClickDetector } = require('./tracker/click-detector');
@@ -115,6 +116,14 @@ async function initialize() {
     onAlert: (msg) => {
       console.error('[main] Screenshot upload alert:', msg);
       setTrayState('error');
+    },
+  });
+
+  // ── Auto-updater ──────────────────────────────────────────────────────────
+  initAutoUpdater({
+    onUpdateReady: (version) => {
+      // Tell the tray to show a "Restart to Update" item
+      setUpdateReady(version);
     },
   });
 

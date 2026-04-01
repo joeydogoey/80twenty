@@ -7,12 +7,15 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "build": "electron-builder --mac",
+    "release": "electron-builder --mac --publish always"
   },
   "dependencies": {
     "active-win": "^7.1.0",
     "better-sqlite3": "^9.2.0",
     "electron": "^27.1.0",
+    "electron-updater": "^6.1.7",
     "screenshot-desktop": "^1.12.8",
     "sharp": "^0.33.0",
     "uiohook-napi": "^1.5.5",
@@ -28,13 +31,18 @@
     "productName": "Process Tracker",
     "mac": {
       "category": "public.app-category.productivity",
-      "target": "dmg",
+      "target": ["dmg", "zip"],
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "files": [
       "**/*",
       "!node_modules/.cache"
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "joeydogoey",
+      "repo": "80twenty"
+    }
   }
 }
