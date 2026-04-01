@@ -88,37 +88,40 @@ async function captureScreenshot({ trigger = 'periodic', clickX, clickY, screenW
     const outWidth = 1280;
     const outHeight = 720;
 
-    let pipeline = sharp(imgBuffer).resize(outWidth, outHeight, {
-      fit: 'inside',
-      withoutEnlargement: false,
-    });
+    // Resize first to a buffer so we know the ACTUAL output dimensions.
+    // fit:'inside' preserves aspect ratio, so the result may not be exactly
+    // outWidth x outHeight — we must match the SVG overlay to the real size.
+    const { data: resizedBuffer, info: resizeInfo } = await sharp(imgBuffer)
+      .resize(outWidth, outHeight, { fit: 'inside', withoutEnlargement: false })
+      .toBuffer({ resolveWithObject: true });
+
+    const actualWidth = resizeInfo.width;
+    const actualHeight = resizeInfo.height;
+
+    let pipeline = sharp(resizedBuffer);
 
     // Draw red dot for click-triggered screenshots
     if (trigger === 'click' && clickX != null && clickY != null) {
-      // Scale coordinates from screen space to output image space
       // clickX/clickY are in logical (CSS) pixels; imgWidth/imgHeight are physical pixels
       const scaleX = imgWidth / (screenWidth || imgWidth);
       const scaleY = imgHeight / (screenHeight || imgHeight);
 
-      // Physical pixel coords
       const physX = clickX * scaleX;
       const physY = clickY * scaleY;
 
-      // Scale to output dimensions
-      const scaledX = Math.round((physX / imgWidth) * outWidth);
-      const scaledY = Math.round((physY / imgHeight) * outHeight);
+      // Scale to actual resized output dimensions
+      const scaledX = Math.round((physX / imgWidth) * actualWidth);
+      const scaledY = Math.round((physY / imgHeight) * actualHeight);
 
-      // SVG red dot overlay
+      // SVG must match actual output dimensions exactly
       const dotSvg = Buffer.from(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${outWidth}" height="${outHeight}">
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${actualWidth}" height="${actualHeight}">
           <circle cx="${scaledX}" cy="${scaledY}" r="8" fill="red" fill-opacity="0.85"/>
           <circle cx="${scaledX}" cy="${scaledY}" r="12" fill="none" stroke="red" stroke-width="2" stroke-opacity="0.5"/>
         </svg>`
       );
 
-      pipeline = sharp(imgBuffer)
-        .resize(outWidth, outHeight, { fit: 'inside', withoutEnlargement: false })
-        .composite([{ input: dotSvg, top: 0, left: 0 }]);
+      pipeline = sharp(resizedBuffer).composite([{ input: dotSvg, top: 0, left: 0 }]);
     }
 
     await pipeline.jpeg({ quality: screenshotQuality }).toFile(localPath);
